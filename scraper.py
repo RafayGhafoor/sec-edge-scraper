@@ -90,28 +90,37 @@ async def make_search(s, _cik, start_date, end_date):
     resp = await _make_request(s, params)
 
     async def _write_resp(resp):
-        for entity in resp["hits"]["hits"]:
-            ciks = entity["_source"]["ciks"][0]
-            _id = entity["_id"]
-            before, after = _id.split(':')
-            before = before.replace("-", "")
-            before = before.replace(":", "/")
-            _id = before+'/'+after
-            url = f"https://www.sec.gov/Archives/edgar/data/{ciks}/{_id}"
-            extracted_urls.append(url)
+        try:
+            for entity in resp["hits"]["hits"]:
+                ciks = entity["_source"]["ciks"][0]
+                _id = entity["_id"]
+                before, after = _id.split(':')
+                before = before.replace("-", "")
+                before = before.replace(":", "/")
+                _id = before+'/'+after
+                url = f"https://www.sec.gov/Archives/edgar/data/{ciks}/{_id}"
+                extracted_urls.append(url)
+        except Exception as e:
+            pass
 
-    items_per_page = 100
-    total_pages = math.ceil(
-        int(resp["hits"]["total"]["value"]) / items_per_page)
+    try:
+        items_per_page = 100
+        total_pages = math.ceil(
+            int(resp["hits"]["total"]["value"]) / items_per_page)
 
-    for i in range(1, total_pages + 1):
-        if i == 1:
-            await _write_resp(resp)
-        else:
-            params["page"] = str(i)
-            params["from"] = str(i * 100 - 100)
-            resp = await _make_request(s, params)
-            await _write_resp(resp)
+        for i in range(1, total_pages + 1):
+            try:
+                if i == 1:
+                    await _write_resp(resp)
+                else:
+                    params["page"] = str(i)
+                    params["from"] = str(i * 100 - 100)
+                    resp = await _make_request(s, params)
+                    await _write_resp(resp)
+            except Exception as e:
+                continue
+    except Exception as e:
+        pass
     return extracted_urls
 
 
