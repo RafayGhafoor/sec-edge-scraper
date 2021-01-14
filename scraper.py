@@ -169,6 +169,5 @@ async def main():
                     n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
             kp.remove_keyword(_date)
             total_bar()
-            break
     progress_writer.close()
 trio.run(main)
