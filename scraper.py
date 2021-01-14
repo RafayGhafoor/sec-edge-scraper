@@ -1,7 +1,6 @@
 from flashtext import KeywordProcessor
 import math
 import requests
-from dateutil.relativedelta import relativedelta
 import bs4
 from datetime import datetime, date
 import json
@@ -11,7 +10,7 @@ from asks.sessions import Session
 import os
 import trio
 from alive_progress import alive_bar
-
+progress_writer = open('progress.txt', 'a')
 count = 0
 os.makedirs('data', exist_ok=True)
 
@@ -32,11 +31,11 @@ def add_months(sourcedate, months):
 
 
 def read_csv(filename='csvfile.csv'):
-    data = {}
+    data = []
     with open(filename, newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            data[row['CIK']] = row["DATE"]
+            data.append((row['CIK'], row["DATE"]))
     return data
 
 
@@ -54,8 +53,8 @@ async def fetch(s, url, parameter=""):
         return resp.json()
 
 
-def _make_request(s, params):
-    return fetch(
+async def _make_request(s, params):
+    return await fetch(
         s,
         url="https://efts.sec.gov/LATEST/search-index",
         parameter=params,
@@ -65,6 +64,7 @@ def _make_request(s, params):
 def date_to_text(_date):
     obj = datetime.strptime(_date, '%Y-%m-%d %H:%M:%S')
     return obj.strftime("%B %d, %Y")
+
 
 def date_to_fn(_date):
     obj = datetime.strptime(_date, '%Y-%m-%d %H:%M:%S')
@@ -89,7 +89,7 @@ async def make_search(s, _cik, start_date, end_date):
     # r = session.post(URL, data=json.dumps(params))
     resp = await _make_request(s, params)
 
-    def _write_resp(resp):
+    async def _write_resp(resp):
         for entity in resp["hits"]["hits"]:
             ciks = entity["_source"]["ciks"][0]
             _id = entity["_id"]
@@ -106,34 +106,13 @@ async def make_search(s, _cik, start_date, end_date):
 
     for i in range(1, total_pages + 1):
         if i == 1:
-            _write_resp(resp)
+            await _write_resp(resp)
         else:
             params["page"] = str(i)
             params["from"] = str(i * 100 - 100)
             resp = await _make_request(s, params)
-            _write_resp(resp)
+            await _write_resp(resp)
     return extracted_urls
-
-
-async def grabber(s, url, bar, _cik, _date):
-    try:
-        global count
-        resp = await s.get(url)
-        text = resp.text
-        found_keywords = kp.extract_keywords(text)
-        result = is_valid(found_keywords)
-        filename = f'{_cik}_{_date}'
-        if result:
-            with open(os.path.join('data', filename+'.txt'), 'w') as f:
-                f.write(text)
-            count += 1
-        with open('progress.txt', 'a') as f:
-            f.write(f"{filename},{url}\n")
-    except Exception as e:
-        print("Some problem occurred")
-    
-    finally:
-        bar()
 
 
 def is_valid(keywords):
@@ -142,24 +121,43 @@ def is_valid(keywords):
     return valid and keywords.index(_keyword) != 0
 
 
-async def main():
-    s = Session(connections=10)
-    input_data = read_csv()
+async def grabber(s, url, _cik, _date):
+    try:
+        global count
+        resp = await s.get(url)
+        text = resp.text
+        found_keywords = kp.extract_keywords(text)
+        result = is_valid(found_keywords)
+        filename = f'{_cik}_{_date}'
+        if result:
+            file_path = os.path.join('data', filename+'.txt')
+            if not os.path.exists(file_path):
+                with open(file_path, 'w') as f:
+                    f.write(text)
+                count += 1
+        progress_writer.write(f"{filename},{url}\n")
+    except Exception as e:
+        print("Some problem occurred")
 
-    for _cik, _date in input_data.items():
-        print("Testing on ", _cik)
-        start_date, end_date = custom_date_generator(_date)
-        extracted_urls = await make_search(s, _cik, start_date, end_date)
-        extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
-        text_date = date_to_text(_date)
-        kp.add_keywords_from_list(list(keywords))
-        kp.add_keyword(text_date)
-        with alive_bar(len(extracted_urls), title="Parsing Progress") as bar:
+
+async def main():
+    s = Session(connections=50)
+    input_data = read_csv()
+    with alive_bar(len(input_data), title="Total Progress") as total_bar:
+        for _cik, _date in input_data:
+            start_date, end_date = custom_date_generator(_date)
+            extracted_urls = await make_search(s, _cik, start_date, end_date)
+            extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
+            text_date = date_to_text(_date)
+            kp.add_keywords_from_list(list(keywords))
+            kp.add_keyword(text_date)
+            _urls_length = len(extracted_urls)
+            if not _urls_length:
+                continue
             async with trio.open_nursery() as n:
                 for url in extracted_urls:
-                    n.start_soon(grabber, s, url, bar, _cik, date_to_fn( _date))
-
-        kp.remove_keyword(_date)
-
-
+                    n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
+            kp.remove_keyword(_date)
+            total_bar()
+    progress_writer.close()
 trio.run(main)
