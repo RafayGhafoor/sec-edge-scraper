@@ -139,6 +139,7 @@ async def grabber(s, url, _cik, _date):
         result = is_valid(found_keywords)
         filename = f'{_cik}_{_date}'
         if result:
+            print(filename)
             file_path = os.path.join('data', filename+'.txt')
             if not os.path.exists(file_path):
                 with open(file_path, 'w') as f:
@@ -168,5 +169,6 @@ async def main():
                     n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
             kp.remove_keyword(_date)
             total_bar()
+            break
     progress_writer.close()
 trio.run(main)
