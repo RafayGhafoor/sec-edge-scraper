@@ -92,14 +92,18 @@ async def make_search(s, _cik, start_date, end_date):
     async def _write_resp(resp):
         try:
             for entity in resp["hits"]["hits"]:
-                ciks = entity["_source"]["ciks"][0]
-                _id = entity["_id"]
-                before, after = _id.split(':')
-                before = before.replace("-", "")
-                before = before.replace(":", "/")
-                _id = before+'/'+after
-                url = f"https://www.sec.gov/Archives/edgar/data/{ciks}/{_id}"
-                extracted_urls.append(url)
+                try:
+                    ciks = entity["_source"]["ciks"][0]
+                    _id = entity["_id"]
+                    before, after = _id.split(':')
+                    before = before.replace("-", "")
+                    before = before.replace(":", "/")
+                    _id = before+'/'+after
+                    url = f"https://www.sec.gov/Archives/edgar/data/{ciks}/{_id}"
+                    extracted_urls.append(url)
+                except Exception as e:
+                    print(e)
+                    continue
         except Exception as e:
             print(e)
 
@@ -153,21 +157,21 @@ async def grabber(s, url, _cik, _date):
 async def main():
     s = Session(connections=50)
     input_data = read_csv()
-    with alive_bar(len(input_data), title="Total Progress") as total_bar:
-        for _cik, _date in input_data:
-            start_date, end_date = custom_date_generator(_date)
-            extracted_urls = await make_search(s, _cik, start_date, end_date)
-            extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
-            text_date = date_to_text(_date)
-            kp.add_keywords_from_list(list(keywords))
-            kp.add_keyword(text_date)
-            _urls_length = len(extracted_urls)
-            if not _urls_length:
-                continue
-            async with trio.open_nursery() as n:
-                for url in extracted_urls:
-                    n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
-            kp.remove_keyword(_date)
-            total_bar()
+    # with alive_bar(len(input_data), title="Total Progress") as total_bar:
+    for _cik, _date in input_data:
+        start_date, end_date = custom_date_generator(_date)
+        extracted_urls = await make_search(s, _cik, start_date, end_date)
+        extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
+        text_date = date_to_text(_date)
+        kp.add_keywords_from_list(list(keywords))
+        kp.add_keyword(text_date)
+        _urls_length = len(extracted_urls)
+        if not _urls_length:
+            continue
+        async with trio.open_nursery() as n:
+            for url in extracted_urls:
+                n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
+        kp.remove_keyword(_date)
+            # total_bar()
     progress_writer.close()
 trio.run(main)
