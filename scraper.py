@@ -159,6 +159,7 @@ async def main():
     input_data = read_csv()
     # with alive_bar(len(input_data), title="Total Progress") as total_bar:
     for _cik, _date in input_data:
+        print(f"Testing {_cik}")
         start_date, end_date = custom_date_generator(_date)
         extracted_urls = await make_search(s, _cik, start_date, end_date)
         extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
