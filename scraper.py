@@ -101,7 +101,7 @@ async def make_search(s, _cik, start_date, end_date):
                 url = f"https://www.sec.gov/Archives/edgar/data/{ciks}/{_id}"
                 extracted_urls.append(url)
         except Exception as e:
-            pass
+            print(e)
 
     try:
         items_per_page = 100
@@ -120,7 +120,7 @@ async def make_search(s, _cik, start_date, end_date):
             except Exception as e:
                 continue
     except Exception as e:
-        pass
+        print(e)
     return extracted_urls
 
 
