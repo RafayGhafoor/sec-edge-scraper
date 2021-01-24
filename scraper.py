@@ -93,7 +93,7 @@ async def make_search(s, _cik, start_date, end_date):
         try:
             for entity in resp["hits"]["hits"]:
                 try:
-                    ciks = entity["_source"]["ciks"][0]
+                    ciks = int(entity["_source"]["ciks"][0])
                     _id = entity["_id"]
                     before, after = _id.split(':')
                     before = before.replace("-", "")
@@ -155,7 +155,7 @@ async def grabber(s, url, _cik, _date):
 
 
 async def main():
-    s = Session(connections=50)
+    s = Session(connections=200)
     input_data = read_csv()
     try:
         with alive_bar(len(input_data), title="Total Progress") as total_bar:
