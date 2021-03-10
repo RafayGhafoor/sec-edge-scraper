@@ -1,3 +1,4 @@
+import roman
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import os
@@ -12,37 +13,96 @@ class ParseAgreement:
     def __init__(self, content):
         self.content = content.split("\n")[:300]
 
+    def get_section_number_roman(self, line):
+        # line = 'ARTICLE V AFFIRMATIVE COVENANTS OF THE BORROWER..................................................................14'
+        line = line.lower()
+        if 'article' in line:
+            line = line.replace('article', '')
+        try:
+            tokens = line.split()
+            for line_tokens in tokens:
+                try:
+                    section_number = str(roman.fromRoman(line_tokens.upper())) + '.'
+                    return section_number
+                except Exception as e:
+                    continue
+        except Exception as e:
+            print(e)
+            return -1
+        return -1
+
+    def get_section_number(self, line):
+        section_number = re.findall('\d{1,2}\.?', line)
+        roman_section_number = self.get_section_number_roman(line) 
+        if len(section_number) >= 2 and roman_section_number == -1:
+            section_number = section_number[0]
+        else:
+            # Fallback method
+            section_number = roman_section_number
+        return section_number
+
     def get_covenant_categories(self, filename):
         headings_mapping = {}
-        # if not filename.startswith('0000002969_09161999'):
-        #     return
+
         for index, i in enumerate(self.content):
             if 'covenant' in i.lower() and sum(c.isdigit() for c in i):
                 headings_mapping[i] = []
-                section_number = re.findall('\d\.?\d', i)
-                if len(section_number) == 2:
-                    section_number = section_number[0]
-                else:
-                    section_number = -1
+
+                section_number = float(
+                    self.get_section_number(i))
+                # print(section_number, i)
                 for line in range(index+1, index + 100):
                     try:
-                        section_number_now = re.findall(
-                            '\d\.?\d', self.content[line])[0]
+                        # print("%r", self.content[line])
+                        if not self.content[line].strip():
+                            continue
 
-                        if section_number != -1:
+                        section_number_now = float(self.get_section_number(
+                            self.content[line]))
+                        if section_number != -1 and section_number_now != -1:
+                            # print(section_number_now, section_number, self.content[line])
                             if section_number_now > section_number:
                                 break
-                        if section_number == section_number_now or 'SECTION' in self.content[line]:
-                            headings_mapping[i].append(self.content[line])
+                        # print(section_number, section_number_now,
+                        #       self.content[line])
+                        if section_number == section_number_now or 'section' in self.content[line].lower() and "article" not in self.content[line].lower():
+                            if self.content[line][-1].isdigit():
+                                headings_mapping[i].append(self.content[line])
                         if "article" in self.content[line].lower():
                             break
                     except IndexError:
                         break
+
+        if headings_mapping:
+            print("Running on file: ", filename)
+
+        cache = set()
+        
         for k, v in headings_mapping.items():
-            print("KEY: ", k.strip())
-            for i in v:
-                print(i.strip())
-                #     input()
+            # if k.startswith(' '): continue
+            key = ' '.join(k.strip().split()).strip()
+            try:
+                section_key = [i for i in key.split() if i[0].isdigit()
+                               ][0].replace('.', '')
+                if len(section_key) > 2:
+                    continue
+        
+            except Exception as e:
+                pass
+
+            finally:
+                key = ' '.join(key.split())
+                if key not in cache:
+                    print(key)
+                cache.add(key)
+                
+                for i in v:
+                    val = ' '.join(i.split())
+                    if val not in cache:
+                        print(val)
+                    cache.add(val)
+                
+                # print('-'*23+'\n\n')
 
         # print(filename)
 
@@ -108,29 +168,30 @@ def parse_file(content):
 
 
 def main():
-    os.chdir('resources')
+    # os.chdir('resources')
+    os.chdir('data')
+
     for i in os.listdir('.'):
         if not i.endswith('.txt'):
             continue
+        # if not i.endswith('0000813856_07022002.txt'):
+        #     continue
+        # if not i.endswith('0001084408_09272001.txt'):
+        #     continue
         with open(i, 'r') as f:
             try:
                 agreement_parser = ParseAgreement(f.read())
                 agreement_parser.get_covenant_categories(i)
                 # get_existing_agreement_date(f.read())
             except Exception as e:
-                print(e)
                 # print(i)
                 continue
-        print(i)
+        # print(i)
         # input()
     # print(TOTAL)
 
 
 main()
-# os.chdir('data')
-# for i in os.listdir('.'):
-#     with open(i, 'r') as f:
 
-
-#     for w in all_pages:
-#         print(w)
+# a = ParseAgreement("SECTION VI DEFAULT..........................................................................59")
+# print(a.get_section_number(a.content[0]))
