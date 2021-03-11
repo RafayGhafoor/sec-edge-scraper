@@ -230,8 +230,8 @@ def main():
                         writer = csv.writer(f)
                         writer.writerow(csv_data)
             except Exception as e:
-                raise
-                # continue
+                # raise
+                continue
         count += 1
 
         # with open("../results.json", 'a') as z:
