@@ -3,8 +3,9 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import os
 import csv
-import matcher
+# import matcher
 import datefinder
+import utils
 import bs4
 import re
 import json
@@ -13,55 +14,38 @@ TOTAL = 0
 
 class ParseAgreement:
     def __init__(self, content):
-        self.content = content.split("\n")[:300]
-
-    def get_section_number_roman(self, line):
-        # line = 'ARTICLE V AFFIRMATIVE COVENANTS OF THE BORROWER..................................................................14'
-        line = line.lower()
-        if 'article' in line:
-            line = line.replace('article', '')
-        try:
-            tokens = line.split()
-            for line_tokens in tokens:
-                try:
-                    section_number = str(
-                        roman.fromRoman(line_tokens.upper())) + '.'
-                    return section_number
-                except Exception as e:
-                    continue
-        except Exception as e:
-            print(e)
-            return -1
-        return -1
-
-    def get_section_number(self, line):
-        section_number = re.findall('\d{1,2}\.?', line)
-        roman_section_number = self.get_section_number_roman(line)
-        if len(section_number) >= 2 and roman_section_number == -1:
-            section_number = section_number[0]
+        self.content = content.split("\n")
+        self.number_of_lines = 1000
+        self.table_of_content = [
+            i for i in self.content if 'table of content' in i.lower()]
+        if self.table_of_content:
+            self.table_of_content_start_index = self.content.index(
+                self.table_of_content[0])
+            self.start_index = self.table_of_content_start_index
+            self.content = self.content[self.start_index:
+                                        self.start_index+self.number_of_lines]
+            # print(self.content)
         else:
-            # Fallback method
-            section_number = roman_section_number
-        return section_number
+            self.content = self.content[:self.number_of_lines]
 
     def get_covenant_categories(self, filename):
         headings_mapping = {}
         collected_data = {}
 
         for index, i in enumerate(self.content):
-            if 'covenant' in i.lower() and sum(c.isdigit() for c in i):
+            if 'covenant' in i.lower() sum(c.isdigit() for c in i) and len([c for c in i if c.isdigit()]) <= 3 or 'Affirmative Covenants'.lower() in i.lower() or 'Negative Covenants'.lower() in i.lower() or "article" in self.content[index-1].lower() or "section" in self.content[index-1].lower():
                 headings_mapping[i] = []
-
                 section_number = float(
-                    self.get_section_number(i))
-                # print(section_number, i)
+                    utils.get_section_number(i))
                 for line in range(index+1, index + 100):
                     try:
+                        if '----' in self.content[line]:
+                            continue
                         # print("%r", self.content[line])
                         if not self.content[line].strip():
                             continue
 
-                        section_number_now = float(self.get_section_number(
+                        section_number_now = float(utils.get_section_number(
                             self.content[line]))
                         if section_number != -1 and section_number_now != -1:
                             # print(section_number_now, section_number, self.content[line])
@@ -70,6 +54,9 @@ class ParseAgreement:
                         # print(section_number, section_number_now,
                         #       self.content[line])
                         if section_number == section_number_now or 'section' in self.content[line].lower() and "article" not in self.content[line].lower():
+                            if not self.content[line][-1].isdigit() and self.content[line+1][-1].isdigit():
+                                headings_mapping[i].append(
+                                    self.content[line] + "\n" + self.content[line+1])
                             if self.content[line][-1].isdigit():
                                 headings_mapping[i].append(self.content[line])
                         if "article" in self.content[line].lower():
@@ -91,23 +78,19 @@ class ParseAgreement:
                                ][0].replace('.', '')
                 if len(section_key) > 2:
                     continue
-
             except Exception as e:
-                pass
-
+                print(e)
             finally:
                 found_values = []
-                key = ' '.join(key.split())
-                if key not in cache:
+                key = ' '.join(key.split()).strip()
+                if key not in cache and '\n' not in key and len(key) > 8 and key[-1].isdigit():
                     found_values.append(key)
-                    print(key)
                 cache.add(key)
 
                 for i in v:
                     val = ' '.join(i.split())
-                    if val not in cache:
+                    if val not in cache and '\n' not in val and len(val) > 8 and val[-1].isdigit():
                         found_values.append(val)
-                        print(val)
                     cache.add(val)
                 values_collection.extend(list(found_values))
         return filename, values_collection
@@ -134,7 +117,7 @@ def get_agreement_info(data):
                         if 'amended' in line.lower() or 'restated' in line.lower()]
     should_run = 'amended' in header or 'restated' in header
     if not agreement_phrase:
-        return ['','']
+        return ['', '']
 
     data = []  # Line Number, data
 
@@ -169,6 +152,7 @@ def get_agreement_info(data):
                 result += filtered_statement + '\n'
             TOTAL += 1
     except Exception as e:
+        print(e)
         pass
 
     returned_elements = ['', result]
@@ -185,6 +169,7 @@ def parse_file(content):
 def main():
     # os.chdir('resources')
     os.chdir('data')
+    # os.chdir('covenants')
     json_data = []
     count = 1
     cwd_files = os.listdir('.')
@@ -193,53 +178,76 @@ def main():
         print(f"Processing {_file}: [{num}/{len(cwd_files)}]")
         if not _file.endswith('.txt'):
             continue
-        # if not i.endswith('0001084408_09272001.txt'):
-        #     continue
+        if not _file.endswith('0000203248_08012003.txt'):
+            continue
 
         cik, date = _file.replace('.txt', '').strip().split('_')
         cik = str(int(cik))
         month, date, year = date[0:2], date[2:4], date[4:]
         formatted_date = f"{month}/{date}/{year}"
 
+        # if _file != '0001163302_12152005.txt': continue
         with open(_file, 'r') as f:
             try:
-                # agreement_parser = ParseAgreement(f.read())
-                # filename, values = agreement_parser.get_covenant_categories(
-                #     i)
-                # json_data.append({filename: values})
-                cik, date = _file.replace('.txt', '').strip().split('_')
-                month, date, year = [date[i:i+3]
-                                     for i in range(0, len(date), 3)]
-                formatted_date = f"{month}/{date}/{year}"
-                string_stream = f.read()
-                stream = string_stream.split('\n')
-                fetched_data = matcher.fetch(_file, stream)
-                agreement_phrase, info = get_agreement_info(stream)
-                is_renegotiated = "1" if agreement_phrase else "0"
-                if is_renegotiated:
-                    agreement_phrase = ' '.join(agreement_phrase.split())
-                else:
-                    agreement_phrase = ""
-                    info = ""
-                if not fetched_data:
-                    fetched_data = {"": ""}
-                for covenant_name, lines in fetched_data.items():
-                    csv_data = [str(count), cik, formatted_date, _file.replace(
-                        '.txt', ''), is_renegotiated, agreement_phrase, info, covenant_name, lines]
-                    with open("../desc.csv", 'a') as f:
-                        writer = csv.writer(f)
-                        writer.writerow(csv_data)
+
+                file_content = f.read()
+
+                agreement_parser = ParseAgreement(file_content)
+                filename, values = agreement_parser.get_covenant_categories(
+                    _file)
+                if values:
+                    json_data.append({filename: values})
+
+                # agreement_phrase = " "
+                # info = " "
+                # string_stream = file_content
+                # split_stream = string_stream.split('\n')
+                # stream = [' '.join(i.split()).strip()
+                #           for i in string_stream.upper().split('\n')]
+                # fetched_data = matcher.fetch(_file, stream, split_stream)
+                # agreement_phrase, info = get_agreement_info(split_stream)
+                # is_renegotiated = "1" if agreement_phrase else "0"
+                # if is_renegotiated:
+                #     agreement_phrase = ' '.join(agreement_phrase.split())
+                # if not fetched_data:
+                #     fetched_data = {"": ""}
+                # section_number = ""
+                # section_number_now = ""
+                # running_covenant = ""
+                # current_num = -1
+                # for covenant_name, lines in fetched_data.items():
+                #     section_number = float(
+                #         utils.get_section_number(covenant_name))
+                #     section_number_now = float(utils.get_section_number(
+                #         covenant_name))
+                #     if 'affirmative covenant' in covenant_name.lower() or 'negative covenant' in covenant_name.lower() and section_number_now == section_number_now:
+                #         running_covenant = covenant_name
+                #         current_num = section_number_now
+
+                #     if section_number_now != section_number and 'affirmative covenant' not in covenant_name.lower() and 'negative covenant' not in covenant_name.lower():
+                #         running_covenant = ""
+
+                #     filter_covenant_name = ' '.join(
+                #         covenant_name.replace("SECTION", '').strip().split()[1:])
+                #     csv_data = [str(count), cik, formatted_date, _file.replace(
+                #         '.txt', ''), is_renegotiated, agreement_phrase, info, running_covenant, covenant_name, filter_covenant_name, lines]
+                #     with open("../desc.csv", 'a') as f:
+                #         writer = csv.writer(f)
+                #         writer.writerow(csv_data)
+
             except Exception as e:
-                # raise
+                print(e)
                 continue
         count += 1
 
-        # with open("../results.json", 'a') as z:
-        #     json.dump(json_data, z)
+    if not os.path.exists("../new_results.json"):
+        with open("../new_results.json", 'a') as z:
+            json.dump(json_data, z)
 
         # print(i)
         # input()
     # print(TOTAL)
+
 
 main()
 
