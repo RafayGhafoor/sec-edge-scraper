@@ -172,6 +172,7 @@ async def main():
                 try:
                     start_date, end_date = custom_date_generator(_date)
                     if end_date.split('-')[0] in ('1999','1998','1997','1996'):
+                        total_bar()
                         continue
                     extracted_urls = await make_search(s, _cik, start_date, end_date)
                     extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
