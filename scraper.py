@@ -10,16 +10,24 @@ from asks.sessions import Session
 import os
 import trio
 from alive_progress import alive_bar
-progress_writer = open('progress.txt', 'a')
-count = 0
-os.makedirs('data', exist_ok=True)
 
-keywords = ('table of contents', "credit agreement", "loan agreement", "credit facility", "loan and security agreement", "loan & security agreement", "revolving credit",
-            "financing and security agreement", "financing & security agreement", "credit and guarantee agreement", "credit & guarantee agreement")
+progress_writer = open('progress.txt', 'a')
+
+count = 0
+
+os.makedirs('new_data', exist_ok=True)
+
+keywords = ("CREDIT AGREEMENT", "LOAN AGREEMENT", "CREDIT FACILITY", "LOAN AND SECURITY AGREEMENT", "LOAN & SECURITY AGREEMENT", "REVOLVING CREDIT",
+            "FINANCING AND SECURITY AGREEMENT", "FINANCING & SECURITY AGREEMENT", "CREDIT AND GUARANTEE AGREEMENT", "CREDIT & GUARANTEE AGREEMENT")
+
+
 tally_keywords = ' OR '.join(
     [f'"{i}"' for i in keywords if i != 'table of contents'])
+
 session = requests.Session()
+
 kp = KeywordProcessor()
+kp.add_keywords_from_list(list(keywords))
 
 
 def add_months(sourcedate, months):
@@ -139,12 +147,13 @@ async def grabber(s, url, _cik, _date):
         global count
         resp = await s.get(url)
         text = resp.text
-        found_keywords = kp.extract_keywords(text)
+        lines = '\n'.join(text.split('\n')[:60])
+        found_keywords = kp.extract_keywords(lines)
         result = is_valid(found_keywords)
         filename = f'{_cik}_{_date}'
-        if result:
-            print(filename)
-            file_path = os.path.join('data', filename+'.txt')
+        if found_keywords:
+            # print(filename)
+            file_path = os.path.join('new_data', filename+'.txt')
             if not os.path.exists(file_path):
                 with open(file_path, 'w') as f:
                     f.write(text)
@@ -165,15 +174,14 @@ async def main():
                     extracted_urls = await make_search(s, _cik, start_date, end_date)
                     extracted_urls = [i for i in extracted_urls if i.endswith('txt')]
                     text_date = date_to_text(_date)
-                    kp.add_keywords_from_list(list(keywords))
-                    kp.add_keyword(text_date)
+                    # kp.add_keyword(text_date)
                     _urls_length = len(extracted_urls)
                     if not _urls_length:
                         continue
                     async with trio.open_nursery() as n:
                         for url in extracted_urls:
                             n.start_soon(grabber, s, url, _cik, date_to_fn(_date))
-                    kp.remove_keyword(_date)
+                    # kp.remove_keyword(_date)
                 except Exception as e:
                     pass
                 finally:

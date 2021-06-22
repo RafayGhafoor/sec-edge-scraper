@@ -4,6 +4,7 @@ with open('new_results.json', 'r') as f:
     data = json.load(f)
 
 
+
 def fetch(_file, stream, original_stream):
     matched_lines = {}
     found_data = ""
@@ -15,14 +16,17 @@ def fetch(_file, stream, original_stream):
             continue
         if '.....' in query:
             query = query.split('.....')[0]
+        else:
+            query = query[:-4]
         query = query.upper()[:45].strip()
         try:
-            result = [line for line in stream if line.startswith(query)][1]
+            result = [line for line in stream if 
+                line.replace(' ', '').startswith(query.replace(' ',''))][1]
         except IndexError:
             continue
 
         start = stream.index(result)
-        for index in range(start, start+30):
+        for index in range(start, start+2):
             try:
                 if not matched_lines.get(query):
                     matched_lines[query] = ""

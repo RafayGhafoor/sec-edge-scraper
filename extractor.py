@@ -3,14 +3,21 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 import os
 import csv
-# import matcher
+import matcher
 import datefinder
 import utils
 import bs4
 import re
 import json
+from flashtext import KeywordProcessor
+
 TOTAL = 0
 
+keywords = ("credit agreement", "loan agreement", "credit facility", "loan and security agreement", "loan & security agreement", "revolving credit",
+            "financing and security agreement", "financing & security agreement", "credit and guarantee agreement", "credit & guarantee agreement")
+
+kp = KeywordProcessor()
+kp.add_keywords_from_list(list(keywords))
 
 class ParseAgreement:
     def __init__(self, content):
@@ -33,7 +40,7 @@ class ParseAgreement:
         collected_data = {}
 
         for index, i in enumerate(self.content):
-            if 'covenant' in i.lower() sum(c.isdigit() for c in i) and len([c for c in i if c.isdigit()]) <= 3 or 'Affirmative Covenants'.lower() in i.lower() or 'Negative Covenants'.lower() in i.lower() or "article" in self.content[index-1].lower() or "section" in self.content[index-1].lower():
+            if 'covenant' in i.lower() and sum(c.isdigit() for c in i) and len([c for c in i if c.isdigit()]) <= 3 or 'Affirmative Covenants'.lower() in i.lower() or 'Negative Covenants'.lower() in i.lower():
                 headings_mapping[i] = []
                 section_number = float(
                     utils.get_section_number(i))
@@ -178,8 +185,6 @@ def main():
         print(f"Processing {_file}: [{num}/{len(cwd_files)}]")
         if not _file.endswith('.txt'):
             continue
-        if not _file.endswith('0000203248_08012003.txt'):
-            continue
 
         cik, date = _file.replace('.txt', '').strip().split('_')
         cik = str(int(cik))
@@ -191,49 +196,56 @@ def main():
             try:
 
                 file_content = f.read()
+                first_sixty = first_five = "\n".join(file_content.split('\n')[:60])
+                first_five = "\n".join(file_content.split('\n')[:300])
+                found_keywords = kp.extract_keywords(first_sixty.lower())
+                if not found_keywords:
+                    continue
+                if 'covenant' not in first_five:
+                    continue
 
-                agreement_parser = ParseAgreement(file_content)
-                filename, values = agreement_parser.get_covenant_categories(
-                    _file)
-                if values:
-                    json_data.append({filename: values})
+                # agreement_parser = ParseAgreement(file_content)
+                # filename, values = agreement_parser.get_covenant_categories(
+                #     _file)
+                # if values:
+                #     json_data.append({filename: values})
 
-                # agreement_phrase = " "
-                # info = " "
-                # string_stream = file_content
-                # split_stream = string_stream.split('\n')
-                # stream = [' '.join(i.split()).strip()
-                #           for i in string_stream.upper().split('\n')]
-                # fetched_data = matcher.fetch(_file, stream, split_stream)
-                # agreement_phrase, info = get_agreement_info(split_stream)
-                # is_renegotiated = "1" if agreement_phrase else "0"
-                # if is_renegotiated:
-                #     agreement_phrase = ' '.join(agreement_phrase.split())
-                # if not fetched_data:
-                #     fetched_data = {"": ""}
-                # section_number = ""
-                # section_number_now = ""
-                # running_covenant = ""
-                # current_num = -1
-                # for covenant_name, lines in fetched_data.items():
-                #     section_number = float(
-                #         utils.get_section_number(covenant_name))
-                #     section_number_now = float(utils.get_section_number(
-                #         covenant_name))
-                #     if 'affirmative covenant' in covenant_name.lower() or 'negative covenant' in covenant_name.lower() and section_number_now == section_number_now:
-                #         running_covenant = covenant_name
-                #         current_num = section_number_now
+                agreement_phrase = " "
+                info = " "
+                string_stream = file_content
+                split_stream = string_stream.split('\n')
+                stream = [' '.join(i.split()).strip()
+                          for i in string_stream.upper().split('\n')]
+                fetched_data = matcher.fetch(_file, stream, split_stream)
+                agreement_phrase, info = get_agreement_info(split_stream)
+                is_renegotiated = "1" if agreement_phrase else "0"
+                if is_renegotiated:
+                    agreement_phrase = ' '.join(agreement_phrase.split())
+                if not fetched_data:
+                    fetched_data = {"": ""}
+                section_number = ""
+                section_number_now = ""
+                running_covenant = ""
+                current_num = -1
+                for covenant_name, lines in fetched_data.items():
+                    section_number = float(
+                        utils.get_section_number(covenant_name))
+                    section_number_now = float(utils.get_section_number(
+                        covenant_name))
+                    if 'affirmative covenant' in covenant_name.lower() or 'negative covenant' in covenant_name.lower() and section_number_now == section_number_now:
+                        running_covenant = covenant_name
+                        current_num = section_number_now
 
-                #     if section_number_now != section_number and 'affirmative covenant' not in covenant_name.lower() and 'negative covenant' not in covenant_name.lower():
-                #         running_covenant = ""
+                    if section_number_now != section_number and 'affirmative covenant' not in covenant_name.lower() and 'negative covenant' not in covenant_name.lower():
+                        running_covenant = ""
 
-                #     filter_covenant_name = ' '.join(
-                #         covenant_name.replace("SECTION", '').strip().split()[1:])
-                #     csv_data = [str(count), cik, formatted_date, _file.replace(
-                #         '.txt', ''), is_renegotiated, agreement_phrase, info, running_covenant, covenant_name, filter_covenant_name, lines]
-                #     with open("../desc.csv", 'a') as f:
-                #         writer = csv.writer(f)
-                #         writer.writerow(csv_data)
+                    filter_covenant_name = ' '.join(
+                        covenant_name.replace("SECTION", '').strip().split()[1:])
+                    csv_data = [str(count), cik, formatted_date, _file.replace(
+                        '.txt', ''), is_renegotiated, agreement_phrase, info, running_covenant, covenant_name, filter_covenant_name, lines]
+                    with open("../desc.csv", 'a') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(csv_data)
 
             except Exception as e:
                 print(e)
