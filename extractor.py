@@ -128,8 +128,9 @@ def get_agreement_info(data):
 
     data = []  # Line Number, data
 
+    
     for line_no, content in enumerate(contents):
-        if re.findall('.*dated as of.*', content):
+        if re.findall('.*dated? as of.*', content):
             data.append((line_no, content))
 
     statement = ""
